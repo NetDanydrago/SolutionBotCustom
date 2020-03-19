@@ -10,15 +10,14 @@ namespace Microsoft.BotBuilderSamples
     // Identifies the last question asked.
     public enum Question
     {
-        Name,
-        Age,
-        Date,
         None, // Our last action did not involve a question.
         Coronavirus,
         ResfriadoComun,
-        Tos,
-        Infeccion,
-        Final
+        Gripe,
+        Alergia,
+       Question,
+       SelectOption,
+       Finish
     }
 
     // The last question asked.
