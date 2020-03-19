@@ -20,6 +20,8 @@ namespace PromptUsersForInput.Bots
         static int AuxAlergia = 0;
         static int AuxGripe = 0;
         static bool statusQuestion = false;
+        event EventHandler ThresholdReached;
+        string Question = "";
 
 
         public CustomPrompBot(ConversationState conversationState, UserState userState)
@@ -27,225 +29,118 @@ namespace PromptUsersForInput.Bots
             _conversationState = conversationState;
         }
 
+        protected override async Task OnMembersAddedAsync(IList<ChannelAccount> membersAdded, ITurnContext<IConversationUpdateActivity> turnContext, CancellationToken cancellationToken)
+        {
+            var welcomeText = "Hello and welcome!";
+            foreach (var member in membersAdded)
+            {
+                if (member.Id != turnContext.Activity.Recipient.Id)
+                {
+                    await turnContext.SendActivityAsync(MessageFactory.Text(welcomeText, welcomeText), cancellationToken);
+                }
+            }           
+        }
+
         protected override async Task OnMessageActivityAsync(ITurnContext<IMessageActivity> turnContext, CancellationToken cancellationToken)
         {
 
             var conversationStateAccessors = _conversationState.CreateProperty<ConversationFlow>(nameof(ConversationFlow));
             var flow = await conversationStateAccessors.GetAsync(turnContext, () => new ConversationFlow());
-
-            await FillOutUserProfileAsync(flow, turnContext);
-
-            // Save changes.
-            await _conversationState.SaveChangesAsync(turnContext);
-        }
-
-        private static async Task FillOutUserProfileAsync(ConversationFlow flow, ITurnContext turnContext)
-        {
-
-            string input = turnContext.Activity.Text?.Trim();
-            IMessageActivity message;
-            List<string> QuestionCoronavirus = new List<string>()
-            { "Presenta fiebre mayor a 38 grados?", "Experimenta falta de aire?"
-            ,"Presenta debilidad o fatiga", "Presenta tos?",  "Has asistido a reunio de mas de 20 personas en espacios cerrados?" };
-            List<string> QuestionAlergia = new List<string>() { "¿Tienes Estornudos", "Presenta goteo nasal?" };
-            List<string> QuestionGripe = new List<string>() { "Presenta tos?" };
-            if (!statusQuestion)
+            ThresholdReached += async (sender, e) =>
             {
-                input = "Si";
-                statusQuestion = true;
-            }
-            if (ValidateAnswer(input, out string output, out message))
+                await turnContext.SendActivityAsync(MessageFactory.Text(Question, Question), cancellationToken);
+            };
+            MakeDecisionTree().Evaluate();
+
+            bool GetUserAnswer(string question)
             {
-                if (input.Equals("Finalizar Consulta"))
+                Question = question;
+                string userInput;
+                while (true)
                 {
-                    AuxGripe = 0;
-                    AuxCoronavirus = 0;
-                    AuxAlergia = 0;
-                    flow.LastQuestionAsked = ConversationFlow.Question.None;
-                }
-
-                switch (flow.LastQuestionAsked)
-                {
-                    case ConversationFlow.Question.None:
-                        await turnContext.SendActivityAsync("Hola Bienvenido");
-                        await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                        { new Choice() { Value = "Si" }, new Choice() { Value = "No" } }, QuestionCoronavirus[0]));
-                        AuxCoronavirus++;
-                        flow.LastQuestionAsked = ConversationFlow.Question.SelectOption;
-                        break;
-
-                    case ConversationFlow.Question.SelectOption:
-                        if (input.Contains("S"))
-                        {
-                            await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                            { new Choice() { Value = "Si" }, new Choice() { Value = "No" },new Choice() { Value = "Finalizar Consulta" } }, QuestionCoronavirus[AuxCoronavirus]));
-                            AuxCoronavirus++;
-                            flow.LastQuestionAsked = ConversationFlow.Question.Coronavirus;
-                        }
-                        else
-                        {
-                            AuxCoronavirus = 0;
-                            await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                 { new Choice() { Value = "Si" }, new Choice() { Value = "No" }, new Choice() { Value = "Finalizar Consulta" } }, "Tiene Ojos irritados"));
-                            flow.LastQuestionAsked = ConversationFlow.Question.Alergia;
-                        }
-                        break;
-
-                    case ConversationFlow.Question.Coronavirus:
-                        if (input.Contains("S"))
-                        {
-                            if (AuxCoronavirus == QuestionCoronavirus.Count)
-                            {
-                                await turnContext.SendActivityAsync("Posible Caso de Coronavirus");
-                                AuxCoronavirus = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                    { new Choice() { Value = "Si" }, new Choice() { Value = "No" } ,new Choice() { Value = "Finalizar Consulta" } }, QuestionCoronavirus[AuxCoronavirus]));
-                                AuxCoronavirus++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Coronavirus;
-                            }
-                        }
-                        else
-                        {
-                            if (AuxCoronavirus == QuestionCoronavirus.Count)
-                            {
-                                await turnContext.SendActivityAsync("Consulte a un Medico");
-                                AuxCoronavirus = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                    { new Choice() { Value = "Si" }, new Choice() { Value = "No" } , new Choice() { Value = "Finalizar Consulta" }}, QuestionCoronavirus[AuxCoronavirus]));
-                                AuxCoronavirus++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Gripe;
-                            }
-                        }
-                        break;
-
-                    case ConversationFlow.Question.ResfriadoComun:
-                        if (input.Contains("S"))
-                        {
-                            if (AuxAlergia == QuestionAlergia.Count)
-                            {
-                                await turnContext.SendActivityAsync("Posible Caso de Resfriado Comun");
-                                AuxAlergia = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                             { new Choice() { Value = "Si" }, new Choice() { Value = "No" },new Choice() { Value = "Finalizar Consulta" }}, QuestionAlergia[AuxAlergia]));
-                                AuxAlergia++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.ResfriadoComun;
-                            }
-                        }
-                        else
-                        {
-                            if (AuxAlergia == QuestionAlergia.Count)
-                            {
-                                await turnContext.SendActivityAsync("Consulte a un medico");
-                                AuxAlergia = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                    { new Choice() { Value = "Si" }, new Choice() { Value = "No" },new Choice() { Value = "Finalizar Consulta" }}, QuestionAlergia[AuxAlergia]));
-                                AuxAlergia++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.ResfriadoComun;
-                            }
-                        }
-                        break;
-
-                    case ConversationFlow.Question.Gripe:
-                        if (input.Contains("S"))
-                        {
-                            if (AuxGripe == QuestionGripe.Count)
-                            {
-                                await turnContext.SendActivityAsync("Posible Caso de gripe");
-                                AuxGripe = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                  { new Choice() { Value = "Si" }, new Choice() { Value = "No" } , new Choice() { Value = "Finalizar Consulta" }}, QuestionGripe[AuxGripe]));
-                                AuxGripe++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Gripe;
-                            }
-                        }
-                        else
-                        {
-                            if (AuxGripe == QuestionGripe.Count)
-                            {
-                                await turnContext.SendActivityAsync("Consulte a un Medico");
-                                AuxGripe = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                  { new Choice() { Value = "Si" }, new Choice() { Value = "No" }, new Choice() { Value = "Finalizar Consulta" } }, QuestionGripe[AuxGripe]));
-                                AuxGripe++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Gripe;
-                            }
-                        }
-                        break;
-
-                    case ConversationFlow.Question.Alergia:
-                        if (input.Contains("S"))
-                        {
-                            if (AuxAlergia == QuestionAlergia.Count)
-                            {
-                                await turnContext.SendActivityAsync("Posible Caso de Alergia");
-                                AuxAlergia = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            else
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                 { new Choice() { Value = "Si" }, new Choice() { Value = "No" } , new Choice() { Value = "Finalizar Consulta" } }, QuestionAlergia[AuxAlergia]));
-                                AuxAlergia++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Alergia;
-                            }
-                        }
-                        else
-                        {
-                            if (AuxAlergia == QuestionAlergia.Count)
-                            {
-                                await turnContext.SendActivityAsync("Consulte a un Medico");
-                                AuxAlergia = 0;
-                                flow.LastQuestionAsked = ConversationFlow.Question.Finish;
-                            }
-                            {
-                                await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                                     { new Choice() { Value = "Si" }, new Choice() { Value = "No" }, new Choice() { Value = "Finalizar Consulta" } }, QuestionAlergia[AuxAlergia]));
-                                AuxAlergia++;
-                                flow.LastQuestionAsked = ConversationFlow.Question.ResfriadoComun;
-                            }
-                        }
-                        break;
-
-                    case ConversationFlow.Question.Finish:
-                        AuxGripe = 0;
-                        AuxCoronavirus = 0;
-                        AuxAlergia = 0;
-                        await turnContext.SendActivityAsync(ChoiceFactory.HeroCard(new List<Choice>()
-                             { new Choice() { Value = "Finalizar Consulta" } }, ""));
-                        flow.LastQuestionAsked = ConversationFlow.Question.None;
-                        break;
-
+                    userInput = turnContext.Activity.Text;
+                    if (userInput == "si")
+                        return true;
+                    else
+                    if (userInput == "no")
+                        return false;
+                    else
+                        Console.WriteLine("Your answer is not supported, retry please." +
+                                          Environment.NewLine + Environment.NewLine +
+                                          question);
                 }
             }
-            else
+            DecisionTreeQuery MakeDecisionTree()
             {
-                await turnContext.SendActivityAsync(message);
+                var queryNasalComun =
+                 new DecisionTreeQuery("¿Presenta goteo nasal?",
+                   new DecisionTreeResult("Posible caso de resfriado comun"),
+                       new DecisionTreeResult("Consulte un medico?"), GetUserAnswer);
+
+                var queryNasalAlergia =
+                     new DecisionTreeQuery("¿Presenta goteo nasal?",
+                       new DecisionTreeResult("Posible caso de alergia"),
+                           new DecisionTreeResult("Consulte un medico?"), GetUserAnswer);
+
+                var queryEstorComun =
+                     new DecisionTreeQuery("¿Tiene Estornudos?",
+                       queryNasalComun,
+                           new DecisionTreeResult("Consulte un medico?"), GetUserAnswer);
+
+                var queryEstorAlergia =
+                      new DecisionTreeQuery("¿Tiene Estornudos?",
+                        queryNasalAlergia,
+                            new DecisionTreeResult("Consulte un medico?"), GetUserAnswer);
+
+                var queryOjos =
+                    new DecisionTreeQuery("¿Tiene ojos irritados?",
+                       queryEstorAlergia,
+                            queryEstorComun, GetUserAnswer);
+
+                var queryGripeTox =
+                     new DecisionTreeQuery("¿Presentas Tos?",
+                     new DecisionTreeResult("Posible caso de gripe"),
+                             new DecisionTreeResult("Ve a un Medico"), GetUserAnswer);
+
+                var queryCoroAsistencia =
+                     new DecisionTreeQuery("¿Has asistido a reunio mas de 20 personas en espacios cerrados?",
+                    new DecisionTreeResult("Posible caso de coronavirus"),
+                            new DecisionTreeResult("Ve a un Medico"), GetUserAnswer);
+
+                var queryCoroTox =
+                    new DecisionTreeQuery("¿Presentas Tos?",
+                        queryCoroAsistencia,
+                            new DecisionTreeResult("Ve a un Medico"), GetUserAnswer);
+
+                var queryCoroFatiga =
+                  new DecisionTreeQuery("¿Presenta debilida o fatiga?",
+                    queryCoroTox,
+                            new DecisionTreeResult("Ve a un Medico"), GetUserAnswer);
+
+                var queryGripe =
+                  new DecisionTreeQuery("¿Presenta debilida o fatiga?",
+                    queryGripeTox,
+                            new DecisionTreeResult("Ve a un Medico"), GetUserAnswer);
+
+                var queryAire =
+                  new DecisionTreeQuery("¿Esperimenta falta de aire?",
+                      queryCoroFatiga,
+                          queryGripe, GetUserAnswer);
+
+                var queryFiebreMayor =
+                    new DecisionTreeQuery("¿Presenta fiebre mayor a 38ºC?",
+                                queryAire,
+                                 queryOjos,
+                                    GetUserAnswer);
+                return queryFiebreMayor;
             }
+
+
         }
+     
+
+
+
 
         private static bool ValidateAnswer(string input, out string output, out IMessageActivity message)
         {
@@ -265,6 +160,56 @@ namespace PromptUsersForInput.Bots
 
             return message is null;
         }
+
+    
+
+        abstract public class DecisionTreeCondition
+        {
+            protected string Sentence { get; private set; }
+            abstract public void Evaluate();
+            public DecisionTreeCondition(string sentence)
+            {
+                Sentence = sentence;
+            }
+        }
+
+        public class DecisionTreeQuery : DecisionTreeCondition
+        {
+            private DecisionTreeCondition Positive;
+            private DecisionTreeCondition Negative;
+            private Func<string, bool> UserAnswerProvider;
+            public override void Evaluate()
+            {
+                if (UserAnswerProvider(Sentence))
+                    Positive.Evaluate();
+                else
+                    Negative.Evaluate();
+            }
+            public DecisionTreeQuery(string sentence,
+                                     DecisionTreeCondition positive,
+                                     DecisionTreeCondition negative,
+                                      Func<string, bool>  userAnswerProvider
+                                     )
+              : base(sentence)
+            {
+                Positive = positive;
+                Negative = negative;
+                UserAnswerProvider = userAnswerProvider;
+            }
+        }
+
+        public class DecisionTreeResult : DecisionTreeCondition
+        {
+            public override void Evaluate()
+            {
+                //Console.WriteLine(Sentence);
+            }
+            public DecisionTreeResult(string sentence)
+              : base(sentence)
+            {
+            }
+        }
+
 
     }
 }
